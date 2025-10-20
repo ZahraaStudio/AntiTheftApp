@@ -27,16 +27,4 @@ jobs:
 
       - name: Replace phone number in SecurityEventHandler.kt
         run: |
-          find ./ -type f -name "SecurityEventHandler.kt" -exec sed -i 's/\+201000000000/+201026708036/g' {} \;
-
-      - name: Grant execute permission for Gradlew
-        run: chmod +x ./gradlew
-
-      - name: Build APK
-        run: ./gradlew assembleDebug
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: AntiTheft-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          find ./ -type f -name "SecurityEventHandler.kt" -exec sed -i 's/\+201000000000/+
