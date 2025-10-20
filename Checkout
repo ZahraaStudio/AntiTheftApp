@@ -1,0 +1,79 @@
+name: Unzip, Patch phone & Build APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  unzip-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install unzip
+        run: sudo apt-get update && sudo apt-get install -y unzip
+
+      - name: List repo before unzip
+        run: ls -la
+
+      - name: Unzip project.zip (expect project.zip at repo root)
+        run: |
+          if [ -f project.zip ]; then
+            unzip -o project.zip -d unzipped_project
+            # move unzipped contents to repo root
+            shopt -s dotglob
+            mv unzipped_project/* .
+            rm -rf unzipped_project
+            rm -f project.zip
+          else
+            echo "project.zip not found in repo root. Exiting."
+            exit 1
+          fi
+
+      - name: Confirm files present
+        run: ls -la
+
+      - name: Patch phone number in SecurityEventHandler.kt
+        run: |
+          FILE="app/src/main/java/com/example/antitheft/SecurityEventHandler.kt"
+          if [ -f "$FILE" ]; then
+            # create backup
+            cp "$FILE" "${FILE}.bak"
+            # Replace the line that reads from prefs with a fixed phone number
+            # We look for the line that contains: prefs.getString("alert_phone", null) ?: return
+            # and replace it with val phone = "+201026708036"
+            perl -0777 -pe 's/val\s+prefs\s*=\s*context\.getSharedPreferences\(PREF,\s*Context\.MODE_PRIVATE\)\s*;.*?val\s+phone\s*=\s*prefs\.getString\(\"alert_phone\",\s*null\)\s*:\s*return/val prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);\n            val phone = "+201026708036"/gs' -i "$FILE" || true
+            # fallback simple sed replace if perl failed
+            if ! grep -q 'val phone = "+201026708036"' "$FILE"; then
+              sed -i 's/val phone = prefs.getString("alert_phone", null) ?: return/val phone = "+201026708036"/' "$FILE" || true
+            fi
+            echo "Patched file:"
+            sed -n '1,160p' "$FILE"
+          else
+            echo "SecurityEventHandler.kt not found at expected path: $FILE"
+            exit 1
+          fi
+
+      - name: Commit patched file
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add app/src/main/java/com/example/antitheft/SecurityEventHandler.kt
+          git commit -m "CI: set alert phone number to +201026708036" || echo "No changes to commit"
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew || true
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload artifact (APK)
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
